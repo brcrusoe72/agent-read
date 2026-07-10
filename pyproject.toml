@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-read"
+version = "0.1.0"
+description = "Turn any URL into clean text for AI agents. Survives paywalls, 403s, PDFs, YouTube. No server, no API key."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+]
+
+[project.optional-dependencies]
+pdf = ["pdfplumber>=0.11"]
+# youtube support shells out to the yt-dlp CLI; install it however you like.
+youtube = ["yt-dlp>=2024.1"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+agent-read = "agent_read.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_read"]
