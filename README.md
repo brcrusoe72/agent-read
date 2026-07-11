@@ -87,8 +87,13 @@ rather than silently.
 
 ## The number
 
-TBD — success rate on 50 hard URLs (paywalls, 403s, PDFs, dead links),
-`agent-read` vs. a plain `httpx.get` + strip-tags baseline.
+On 40 real, hard URLs (PDFs, paywalls, bot-blocked pages, dead links),
+`agent-read` returns usable clean text **85% of the time — vs. 48%** for a
+strong naive baseline (browser User-Agent + strip-tags, single fetch). It wins
+15 URLs the baseline can't and loses **zero**. PDFs alone are **9/9 vs. 0/9**;
+Wayback and UA-rotation rescue paywalled and blocked pages the baseline gets a
+403 or a stub on. [Full results + method](benchmark/RESULTS.md); reproduce with
+`python benchmark/run_benchmark.py`.
 
 ## Development
 
