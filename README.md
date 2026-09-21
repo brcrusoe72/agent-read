@@ -99,7 +99,8 @@ Wayback and UA-rotation rescue paywalled and blocked pages the baseline gets a
 
 ```bash
 uv sync --extra dev --extra pdf
-uv run pytest        # pure-logic tests + live contract tests (network)
+uv run pytest --ignore=tests/test_read_live.py  # deterministic tests
+uv run pytest tests/test_read_live.py           # live contracts (network)
 ```
 
 ## License
