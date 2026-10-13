@@ -34,9 +34,9 @@ def test_safety_block_is_loud_not_empty():
     assert "safety" in (r.error or "")
 
 
-def test_failure_reports_strategies_tried():
-    # A host that won't resolve — must fail with the chain it attempted,
-    # never a silent empty success.
+def test_dns_failure_reports_safety_refusal():
+    # DNS failure now fails closed before any extraction strategy runs.
     r = read("https://this-domain-does-not-exist-abc123xyz.example")
     assert not r.ok
-    assert r.strategies_tried  # tried something, said so
+    assert "safety" in (r.error or "")
+    assert not r.strategies_tried

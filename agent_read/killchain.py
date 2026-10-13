@@ -21,6 +21,7 @@ import httpx
 
 from .extract import clean_html, is_paywalled, readability_extract, MIN_USEFUL_CHARS
 from .safety import is_safe_url
+from .fetch import public_client, safe_get
 from .sanitize import scrub
 
 DEFAULT_MAX_CHARS = 15_000
@@ -49,7 +50,8 @@ class ReadResult:
 
 
 def read(url: str, max_chars: int = DEFAULT_MAX_CHARS,
-         client: httpx.Client | None = None) -> ReadResult:
+         client: httpx.Client | None = None, *,
+         allow_external_downloader: bool = False) -> ReadResult:
     """Extract clean text from one URL. Never raises for a fetch failure —
     returns ReadResult(ok=False, error=...) so callers/agents branch on data."""
     safe, reason = is_safe_url(url)
@@ -57,19 +59,23 @@ def read(url: str, max_chars: int = DEFAULT_MAX_CHARS,
         return ReadResult(url, ok=False, error=f"blocked by safety check: {reason}")
 
     owns_client = client is None
-    client = client or httpx.Client(follow_redirects=True, timeout=FETCH_TIMEOUT)
+    client = client or public_client()
     try:
-        return _run_chain(client, url, max_chars)
+        return _run_chain(client, url, max_chars, allow_external_downloader=allow_external_downloader)
     finally:
         if owns_client:
             client.close()
 
 
-def _run_chain(client: httpx.Client, url: str, max_chars: int) -> ReadResult:
+def _run_chain(client: httpx.Client, url: str, max_chars: int, *,
+               allow_external_downloader: bool = False) -> ReadResult:
     tried: list[str] = []
 
     # YouTube has exactly one sensible strategy — don't waste the HTML chain.
     if _is_youtube(url):
+        if not allow_external_downloader:
+            return ReadResult(url, ok=False, error="YouTube uses an external downloader; "
+                              "explicit allow_external_downloader opt-in required")
         return _finish(url, _strategy_youtube(url), "youtube", tried, max_chars,
                        fail="YouTube transcript failed (install agent-read[youtube]?)")
 
@@ -154,7 +160,7 @@ def _finish(url: str, raw: str | None, strategy: str, tried: list[str],
 # --- strategies -------------------------------------------------------------
 
 def _fetch(client: httpx.Client, url: str, ua_index: int) -> httpx.Response:
-    return client.get(url, headers={
+    return safe_get(client, url, headers={
         "User-Agent": USER_AGENTS[ua_index % len(USER_AGENTS)],
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
@@ -184,16 +190,16 @@ def _strategy_ua_rotation(client: httpx.Client, url: str) -> str | None:
 
 
 def _strategy_wayback(client: httpx.Client, url: str, max_chars: int) -> str | None:
-    cdx = (f"https://web.archive.org/cdx/search/cdx"
-           f"?url={url}&output=json&limit=1&sort=reverse")
-    r = client.get(cdx, timeout=FETCH_TIMEOUT)
+    r = safe_get(client, "https://web.archive.org/cdx/search/cdx",
+                 params={"url": url, "output": "json", "limit": 1, "sort": "reverse"},
+                 timeout=FETCH_TIMEOUT)
     if not r.is_success:
         return None
     data = r.json()
     if len(data) <= 1:  # row 0 is the header
         return None
     timestamp = data[1][1]
-    snap = client.get(f"https://web.archive.org/web/{timestamp}/{url}",
+    snap = safe_get(client, f"https://web.archive.org/web/{timestamp}/{url}",
                       timeout=WAYBACK_TIMEOUT, headers={"User-Agent": USER_AGENTS[0]})
     if not snap.is_success:
         return None
@@ -272,4 +278,5 @@ def _is_pdf_url(url: str) -> bool:
 
 def _is_youtube(url: str) -> bool:
     host = (urlparse(url).hostname or "").lower()
-    return host.endswith("youtube.com") or host.endswith("youtu.be")
+    return any(host == domain or host.endswith("." + domain)
+               for domain in ("youtube.com", "youtu.be"))

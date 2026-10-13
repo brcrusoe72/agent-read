@@ -50,15 +50,21 @@ Cheapest strategy first; escalates until one succeeds:
 3. **ua-rotation** — retry under other browser User-Agents (beats naive 403s)
 4. **wayback** — Internet Archive snapshot (beats dead or blocked live pages)
 
-PDF (`.pdf` URLs) and YouTube (transcript) get dedicated paths. Every result
+PDF (`.pdf` URLs) and explicitly enabled YouTube transcripts get dedicated paths. Every result
 lists `strategies_tried`, so a failure is legible, never silent.
 
 ## Safe by default
 
 Fetched content is untrusted, so `agent-read`:
 
-- **Blocks SSRF** before fetching — localhost, private IPs, cloud metadata
-  endpoints, DNS-rebinding, non-HTTP schemes.
+- **Validates every HTTP target and redirect** — rejects unresolved names,
+  non-public IPv4/IPv6 addresses, URL credentials, and non-HTTP schemes.
+  Connections use validated IP addresses while retaining the original TLS
+  hostname. Single and batch reads use the same protected transport.
+- **Bounds ordinary HTTP responses** to 10 MiB and redirects to five hops.
+  This is a fetch boundary, not an operating-system sandbox for PDF parsing.
+- **Ignores environment proxies** in the default client so an implicit proxy
+  cannot bypass destination validation.
 - **Redacts prompt injections** in the returned text (fake system prompts,
   "ignore previous instructions", exfiltration lures) and reports the count.
 - **Flags paywall stubs** instead of returning "subscribe to continue" as if
@@ -73,7 +79,20 @@ uv tool install "agent-read[pdf]"       # pdfplumber
 # YouTube transcripts shell out to yt-dlp — install it on PATH.
 ```
 
-Without them, a PDF or YouTube URL fails loudly ("install agent-read[pdf]?")
+YouTube uses an external process with its own networking. It is disabled by
+default because the protected HTTP transport cannot constrain that process.
+For a trusted YouTube URL, explicitly opt in:
+
+```bash
+agent-read --allow-external-downloader https://www.youtube.com/watch?v=VIDEO_ID
+```
+
+The equivalent Python option is `read(url, allow_external_downloader=True)`.
+When explicitly supplying `read(..., client=...)`, the caller owns transport
+security: use `agent_read.fetch.public_client()` for DNS pinning. Plain custom
+HTTPX clients retain redirect checks but do not receive connection pinning.
+
+Without optional dependencies, a PDF or YouTube URL fails loudly ("install agent-read[pdf]?")
 rather than silently.
 
 ## Non-goals
