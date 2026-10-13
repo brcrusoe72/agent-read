@@ -11,8 +11,6 @@ import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-import httpx
-
 from . import __version__
 from .killchain import DEFAULT_MAX_CHARS, ReadResult, read
 from .render import to_json, to_terminal
@@ -31,9 +29,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
                         help=f"cap per-URL content (default {DEFAULT_MAX_CHARS})")
     parser.add_argument("--version", action="version", version=f"agent-read {__version__}")
+    parser.add_argument("--allow-external-downloader", action="store_true",
+                        help="allow yt-dlp for trusted YouTube URLs; outside protected HTTP fetching")
     args = parser.parse_args(argv)
 
-    results = _read_all(args.urls, args.max_chars)
+    results = _read_all(args.urls, args.max_chars, args.allow_external_downloader)
 
     print(to_json(results) if args.json else to_terminal(results))
 
@@ -42,13 +42,12 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if any(r.ok for r in results) else 1
 
 
-def _read_all(urls: list[str], max_chars: int) -> list[ReadResult]:
+def _read_all(urls: list[str], max_chars: int, allow_external_downloader: bool = False) -> list[ReadResult]:
     if len(urls) == 1:
-        return [read(urls[0], max_chars=max_chars)]
-    # Batch: one shared client per worker thread, bounded concurrency.
+        return [read(urls[0], max_chars=max_chars, allow_external_downloader=allow_external_downloader)]
+    # Each worker creates the same protected client as a single-URL read.
     def _one(u: str) -> ReadResult:
-        with httpx.Client(follow_redirects=True) as c:
-            return read(u, max_chars=max_chars, client=c)
+        return read(u, max_chars=max_chars, allow_external_downloader=allow_external_downloader)
 
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENCY) as pool:
         return list(pool.map(_one, urls))
