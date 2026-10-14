@@ -26,3 +26,8 @@ agent-read = "agent_read.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agent_read"]
+
+[tool.pytest.ini_options]
+markers = [
+    "live: tests that require access to public internet services",
+]

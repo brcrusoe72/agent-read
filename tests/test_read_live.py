@@ -14,11 +14,18 @@ def _online() -> bool:
     try:
         httpx.get("https://example.com", timeout=5)
         return True
-    except httpx.HTTPError:
+    # Client construction can also fail before a request is sent when the
+    # environment advertises an optional proxy transport (for example SOCKS)
+    # that is not installed.  Treat that as offline so collection remains
+    # usable for the deterministic test suite.
+    except (httpx.HTTPError, ImportError):
         return False
 
 
-pytestmark = pytest.mark.skipif(not _online(), reason="offline")
+pytestmark = [
+    pytest.mark.live,
+    pytest.mark.skipif(not _online(), reason="offline"),
+]
 
 
 def test_reads_a_normal_page():
